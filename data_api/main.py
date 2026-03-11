@@ -1,102 +1,137 @@
 """
 Simulación local de la API del profesor.
-Expone el mismo contrato que http://10.43.101.94:8080
-- GET /data?group_id=10  → retorna un batch aleatorio de datos
-- Cambia de batch cada 5 minutos (10 batches en total)
+Mismo contrato que http://10.43.101.94:8080
+
+Endpoints:
+- GET /data?group_number=10
+- GET /restart_data_generation?group_number=10
+- GET /status
 """
-import time
 import random
-import threading
-from datetime import datetime
-from fastapi import FastAPI, Query
-import pandas as pd
-import numpy as np
+import time
+from typing import List
 
-app = FastAPI(title="Data API - Simulación Local")
+from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel, Field
 
-# ── Estado global del batch ───────────────────────────────────────────────────
-BATCH_DURATION = 300  # 5 minutos en segundos
-N_BATCHES = 10
-BATCH_SIZE = 500      # registros por batch
+MIN_UPDATE_TIME = 300  # 5 minutos — igual que la API del profesor
 
-state = {
-    "current_batch": 1,
-    "last_change": time.time(),
-}
+app = FastAPI(
+    title="Proyecto MLOps - Data API (Simulación Local)",
+    version="1.0.0",
+    description="Simulación local de la API del profesor. Mismo contrato que http://10.43.101.94:8080",
+)
 
+# ── Modelos ───────────────────────────────────────────────────────────────────
+class BatchResponse(BaseModel):
+    group_number: int = Field(..., description="Número de grupo solicitado")
+    batch_number: int = Field(..., description="Índice del batch servido")
+    data: List[List[str]] = Field(..., description="Filas del dataset en formato string")
+
+
+# ── Generación de datos sintéticos ────────────────────────────────────────────
 WILDERNESS_AREAS = ["Rawah", "Neota", "Comanche", "Cache"]
-SOIL_TYPES = [f"Type_{i}" for i in range(1, 41)]
+SOIL_TYPES = [f"C{7700 + i}" for i in range(1, 41)]
 COVER_TYPES = list(range(1, 8))
+TOTAL_RECORDS = 5000
+BATCH_SIZE = TOTAL_RECORDS // 10
 
 
-def generate_batch(batch_id: int, n: int = BATCH_SIZE) -> list:
-    """Genera datos sintéticos similares al dataset Forest Cover."""
-    random.seed(batch_id * 42)
-    np.random.seed(batch_id * 42)
-
-    records = []
-    for _ in range(n):
-        records.append({
-            "batch_id": batch_id,
-            "Elevation": round(random.uniform(1859, 3858), 2),
-            "Aspect": round(random.uniform(0, 360), 2),
-            "Slope": round(random.uniform(0, 66), 2),
-            "Horizontal_Distance_To_Hydrology": round(random.uniform(0, 1397), 2),
-            "Vertical_Distance_To_Hydrology": round(random.uniform(-173, 601), 2),
-            "Horizontal_Distance_To_Roadways": round(random.uniform(0, 7117), 2),
-            "Hillshade_9am": random.randint(0, 255),
-            "Hillshade_Noon": random.randint(0, 255),
-            "Hillshade_3pm": random.randint(0, 255),
-            "Horizontal_Distance_To_Fire_Points": round(random.uniform(0, 7173), 2),
-            "Wilderness_Area": random.choice(WILDERNESS_AREAS),
-            "Soil_Type": random.choice(SOIL_TYPES),
-            "Cover_Type": random.choice(COVER_TYPES),
-        })
-    return records
+def generate_dataset(seed: int = 42) -> List[List[str]]:
+    random.seed(seed)
+    dataset = []
+    for _ in range(TOTAL_RECORDS):
+        row = [
+            str(round(random.uniform(1859, 3858), 2)),
+            str(round(random.uniform(0, 360), 2)),
+            str(round(random.uniform(0, 66), 2)),
+            str(round(random.uniform(0, 1397), 2)),
+            str(round(random.uniform(-173, 601), 2)),
+            str(round(random.uniform(0, 7117), 2)),
+            str(random.randint(0, 255)),
+            str(random.randint(0, 255)),
+            str(random.randint(0, 255)),
+            str(round(random.uniform(0, 7173), 2)),
+            random.choice(WILDERNESS_AREAS),
+            random.choice(SOIL_TYPES),
+            str(random.choice(COVER_TYPES)),
+        ]
+        dataset.append(row)
+    return dataset
 
 
-def batch_rotator():
-    """Hilo que rota el batch cada 5 minutos."""
-    while True:
-        time.sleep(BATCH_DURATION)
-        state["current_batch"] = (state["current_batch"] % N_BATCHES) + 1
-        state["last_change"] = time.time()
-        print(f"[{datetime.now()}] Batch rotado → {state['current_batch']}")
+DATASET = generate_dataset()
 
 
-# Iniciar rotador en hilo separado
-threading.Thread(target=batch_rotator, daemon=True).start()
+def get_batch_data(batch_number: int) -> List[List[str]]:
+    start = batch_number * BATCH_SIZE
+    end = start + BATCH_SIZE
+    batch = DATASET[start:end]
+    sample_size = BATCH_SIZE // 10
+    return random.sample(batch, min(sample_size, len(batch)))
 
 
-@app.get("/data")
-def get_data(group_id: int = Query(..., description="Número de grupo")):
-    """
-    Retorna una muestra aleatoria del batch actual.
-    Mismo contrato que la API del profesor.
-    """
-    batch_id = state["current_batch"]
-    batch_data = generate_batch(batch_id)
+# ── Estado por grupo: [timestamp, batch_actual] ───────────────────────────────
+timestamps = {str(g): [0, -1] for g in range(1, 12)}
 
-    # Muestra aleatoria de ~50 registros por petición
-    sample_size = random.randint(40, 60)
-    sample = random.sample(batch_data, min(sample_size, len(batch_data)))
 
-    seconds_remaining = BATCH_DURATION - (time.time() - state["last_change"])
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+@app.get("/")
+async def root():
+    return {"Proyecto MLOps": "Data API - Simulación Local"}
+
+
+@app.get("/data", response_model=BatchResponse, tags=["data"])
+async def read_data(
+    group_number: int = Query(..., ge=1, le=11, description="Número de grupo (1-10)", example=10)
+):
+    if group_number < 1 or group_number > 11:
+        raise HTTPException(status_code=400, detail="Número de grupo inválido")
+
+    if timestamps[str(group_number)][1] >= 11:
+        raise HTTPException(
+            status_code=400,
+            detail="Ya se recolectó toda la información mínima necesaria"
+        )
+
+    current_time = time.time()
+    last_update_time = timestamps[str(group_number)][0]
+
+    if current_time - last_update_time > MIN_UPDATE_TIME:
+        timestamps[str(group_number)][0] = current_time
+        timestamps[str(group_number)][1] += 2 if timestamps[str(group_number)][1] == -1 else 1
+
+    batch_number = timestamps[str(group_number)][1]
+    data = get_batch_data(batch_number)
 
     return {
-        "group_id": group_id,
-        "batch_id": batch_id,
-        "records": len(sample),
-        "seconds_until_next_batch": round(seconds_remaining),
-        "data": sample,
+        "group_number": group_number,
+        "batch_number": batch_number,
+        "data": data,
     }
 
 
-@app.get("/status")
-def status():
-    seconds_remaining = BATCH_DURATION - (time.time() - state["last_change"])
-    return {
-        "current_batch": state["current_batch"],
-        "seconds_until_next_batch": round(seconds_remaining),
-        "total_batches": N_BATCHES,
-    }
+@app.get("/restart_data_generation", tags=["admin"])
+async def restart_data(
+    group_number: int = Query(..., ge=1, le=11, description="Número de grupo a reiniciar", example=10)
+):
+    if group_number < 1 or group_number > 11:
+        raise HTTPException(status_code=400, detail="Número de grupo inválido")
+
+    timestamps[str(group_number)][0] = 0
+    timestamps[str(group_number)][1] = -1
+    return {"ok": True, "group_number": group_number, "message": "Reiniciado correctamente"}
+
+
+@app.get("/status", tags=["info"])
+async def status():
+    result = {}
+    current_time = time.time()
+    for g in range(1, 11):
+        last = timestamps[str(g)][0]
+        seconds_remaining = max(0, MIN_UPDATE_TIME - (current_time - last))
+        result[f"group_{g}"] = {
+            "current_batch": timestamps[str(g)][1],
+            "seconds_until_next_batch": round(seconds_remaining),
+        }
+    return result
