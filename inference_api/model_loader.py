@@ -12,13 +12,16 @@ def load_model():
         secure=False
     )
 
-    bucket = "models"
+    bucket = os.getenv("MINIO_BUCKET", "models")
     model_name = "model.pkl"
 
     response = client.get_object(bucket, model_name)
 
-    model_bytes = io.BytesIO(response.read())
-
-    model = pickle.load(model_bytes)
+    try:
+        model_bytes = io.BytesIO(response.read())
+        model = pickle.load(model_bytes)
+    finally:
+        response.close()
+        response.release_conn()
 
     return model
