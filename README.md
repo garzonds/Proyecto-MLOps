@@ -1,3 +1,7 @@
+
+
+
+
 Parte 2 — Pipeline de Entrenamiento y Almacenamiento de Modelo
 Descripción
 
