@@ -23,7 +23,7 @@ x-airflow-common:
     MINIO_SECRET_KEY: minioadmin
     MINIO_BUCKET: models
     # API externa de datos
-    DATA_API_URL: http://data_api:8080
+    DATA_API_URL: http://host.docker.internal:8081 #Simular red externa
     GROUP_ID: "10"
   volumes:
     - ./airflow/dags:/opt/airflow/dags
@@ -168,6 +168,8 @@ services:
     container_name: data_api
     ports:
       - "8081:8080"
+    volumes:
+    - ./data_api/data:/data  
     restart: always
     networks:
       - mlops-net
