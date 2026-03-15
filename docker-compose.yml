@@ -1,0 +1,225 @@
+# ============================================================
+# Proyecto MLOps - Grupo 10
+# Servicios: PostgreSQL x2, Airflow, MinIO, FastAPI, Data API
+# ============================================================
+
+x-airflow-common:
+  &airflow-common
+  build:
+    context: ./airflow
+    dockerfile: Dockerfile
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres_airflow:5432/airflow_db
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    # Conexión a PostgreSQL de datos
+    POSTGRES_DATA_CONN: postgresql+psycopg2://mlops:mlops@postgres_data:5432/mlops_db
+    # Conexión a MinIO
+    MINIO_ENDPOINT: minio:9000
+    MINIO_ACCESS_KEY: minioadmin
+    MINIO_SECRET_KEY: minioadmin
+    MINIO_BUCKET: models
+    # API externa de datos
+    DATA_API_URL: http://data_api:8080
+    GROUP_ID: "10"
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/scripts:/opt/airflow/scripts
+  depends_on:
+    &airflow-common-depends-on
+    postgres_airflow:
+      condition: service_healthy
+
+services:
+
+  # ============================================================
+  # 1. PostgreSQL — Metadatos de Airflow
+  # ============================================================
+  postgres_airflow:
+    image: postgres:13
+    container_name: postgres_airflow
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow_db
+    volumes:
+      - postgres_airflow_volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+    networks:
+      - mlops-net
+
+  # ============================================================
+  # 2. PostgreSQL — Datos del proyecto (raw, processed, ready)
+  # ============================================================
+  postgres_data:
+    image: postgres:13
+    container_name: postgres_data
+    environment:
+      POSTGRES_USER: mlops
+      POSTGRES_PASSWORD: mlops
+      POSTGRES_DB: mlops_db
+    volumes:
+      - postgres_data_volume:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "mlops"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    ports:
+      - "5432:5432"
+    restart: always
+    networks:
+      - mlops-net
+
+  # ============================================================
+  # 3. MinIO — Almacenamiento de modelos entrenados
+  # ============================================================
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_volume:/data
+    ports:
+      - "9000:9000"   # API
+      - "9001:9001"   # UI
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: always
+    networks:
+      - mlops-net
+
+  # ============================================================
+  # 4. Airflow Init
+  # ============================================================
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow_init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db init &&
+        airflow users create \
+          --username admin \
+          --password admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com || true
+        echo "Airflow init completado!"
+    networks:
+      - mlops-net
+
+  # ============================================================
+  # 5. Airflow Webserver
+  # ============================================================
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow_webserver
+    command: airflow webserver
+    ports:
+      - "8080:8080"
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    restart: always
+    networks:
+      - mlops-net
+
+  # ============================================================
+  # 6. Airflow Scheduler
+  # ============================================================
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow_scheduler
+    command: airflow scheduler
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    restart: always
+    networks:
+      - mlops-net
+
+  # ============================================================
+  # 7. Data API — Simulación local de la API del profesor
+  # ============================================================
+  data_api:
+    build:
+      context: ./data_api
+      dockerfile: Dockerfile
+    container_name: data_api
+    ports:
+      - "8081:8080"
+    restart: always
+    networks:
+      - mlops-net
+
+  # ============================================================
+  # 8. ML Pipeline — Entrenamiento (Integrante 2)
+  # ============================================================
+  ml_pipeline:
+    build:
+      context: ./ml_pipeline
+      dockerfile: Dockerfile
+    container_name: ml_pipeline
+    environment:
+      POSTGRES_DATA_CONN: postgresql+psycopg2://mlops:mlops@postgres_data:5432/mlops_db
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: models
+    volumes:
+      - ./ml_pipeline:/app
+    depends_on:
+      - postgres_data
+      - minio
+    networks:
+      - mlops-net
+
+  # ============================================================
+  # 9. Inference API — FastAPI (Integrante 3)
+  # ============================================================
+  inference_api:
+    build:
+      context: ./inference_api
+      dockerfile: Dockerfile
+    container_name: inference_api
+    environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: models
+    ports:
+      - "8000:8000"
+    depends_on:
+      - minio
+    restart: always
+    networks:
+      - mlops-net
+
+volumes:
+  postgres_airflow_volume:
+  postgres_data_volume:
+  minio_volume:
+
+networks:
+  mlops-net:
+    driver: bridge
