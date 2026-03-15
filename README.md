@@ -227,19 +227,7 @@ Esto permite simular una arquitectura completa de **Machine Learning en producci
 # Flujo completo del sistema
 
 
-API externa
-↓
-Airflow (ingesta)
-↓
-PostgreSQL
-↓
-ML Pipeline (entrenamiento)
-↓
-MinIO (almacenamiento del modelo)
-↓
-FastAPI (inferencia)
-↓
-Usuario final
+API externa - Airflow (ingesta) - PostgreSQL - ML Pipeline (entrenamiento) - MinIO (almacenamiento del modelo) - FastAPI (inferencia) Usuario final
 
 
 ---
