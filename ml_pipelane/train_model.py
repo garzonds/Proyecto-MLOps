@@ -3,7 +3,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
 
 from preprocess import load_data, preprocess_data
-from model_utils import save_model_local
+from model_utils import save_model_local, upload_model_to_minio
 
 
 def train():
@@ -41,8 +41,15 @@ def train():
     print("Guardando modelo localmente...")
     model_path = save_model_local(model, "model.joblib")
 
-    print("Modelo guardado correctamente:")
-    print({"model_path": model_path})
+    print("Subiendo modelo a MinIO...")
+    result = upload_model_to_minio(
+        model_path=model_path,
+        bucket_name="models",
+        object_name="forest_model.joblib"
+    )
+
+    print("Modelo subido correctamente:")
+    print(result)
 
 
 if __name__ == "__main__":
