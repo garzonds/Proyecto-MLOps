@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+
+  postgres:
+    image: postgres:15
+    container_name: ml_postgres
+    environment:
+      POSTGRES_USER: mluser
+      POSTGRES_PASSWORD: mlpass
+      POSTGRES_DB: mldb
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./postgres_init:/docker-entrypoint-initdb.d
+    restart: always
+
+
+  ml_pipeline:
+    build: ./ml_pipelane
+    container_name: ml_pipeline
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: mldb
+      POSTGRES_USER: mluser
+      POSTGRES_PASSWORD: mlpass
+    volumes:
+      - ./data:/data
+    depends_on:
+      - postgres
