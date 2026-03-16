@@ -1,9 +1,13 @@
 from minio import Minio
-import pickle
-import io
 import os
+import io
+import joblib
+import time
+
 
 def load_model():
+
+    print("Inicializando cliente MinIO...")
 
     client = Minio(
         os.getenv("MINIO_ENDPOINT", "minio:9000"),
@@ -13,13 +17,26 @@ def load_model():
     )
 
     bucket = os.getenv("MINIO_BUCKET", "models")
-    model_name = "model.pkl"
 
-    response = client.get_object(bucket, model_name)
+    # Nombre del modelo generado por ml_pipeline
+    model_name = "forest_model.joblib"
+
+    print(f"Intentando cargar modelo '{model_name}' desde bucket '{bucket}'")
+
+    # Esperar hasta que el modelo exista
+    while True:
+        try:
+            response = client.get_object(bucket, model_name)
+            print("Modelo encontrado en MinIO")
+            break
+        except Exception as e:
+            print("Modelo aún no disponible. Esperando 5 segundos...")
+            time.sleep(5)
 
     try:
         model_bytes = io.BytesIO(response.read())
-        model = pickle.load(model_bytes)
+        model = joblib.load(model_bytes)
+        print("Modelo cargado correctamente")
     finally:
         response.close()
         response.release_conn()

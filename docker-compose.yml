@@ -187,7 +187,7 @@ services:
       MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET: models
     volumes:
-      - ./ml_pipeline:/app
+      - ./data:/data
     depends_on:
       - postgres_data
       - minio
@@ -211,6 +211,7 @@ services:
       - "8000:8000"
     depends_on:
       - minio
+      - ml_pipeline
     restart: always
     networks:
       - mlops-net
