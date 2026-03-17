@@ -26,9 +26,6 @@ Debido a la indisponibilidad de la API original, se implementó una API simulada
 ![Arquitectura General](images/architecture.png)
 
 
-El sistema se divide en **tres estaciones principales**.
-
-
 | Servicio           | Descripción                                     |
 | ------------------ | ----------------------------------------------- |
 | **Airflow**        | Orquestación del pipeline                       |
@@ -53,6 +50,8 @@ El sistema se divide en **tres estaciones principales**.
 8. Usuario
 
 --- 
+
+El sistema se divide en **tres estaciones principales**.
 
 # Estación 1 — Ingesta y Orquestación de Datos
 
