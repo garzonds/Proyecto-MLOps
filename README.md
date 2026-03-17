@@ -63,9 +63,9 @@ La API utilizada rota los datos cada **5 minutos**, por lo que cada ejecución d
 
 ![Estación 2](images/station2_ml_pipeline.png)
 
-Esta estación corresponde al **pipeline de entrenamiento del modelo de Machine Learning**.
+Esta estación implementa el pipeline de entrenamiento del modelo de Machine Learning, encargado de transformar los datos, entrenar el modelo y almacenar el artefacto resultante en un sistema de almacenamiento desacoplado.
 
-Aquí se realiza la transformación de datos, entrenamiento del modelo y almacenamiento del artefacto resultante.
+El pipeline se ejecuta dentro de un contenedor Docker (ml_pipeline) y forma parte del flujo MLOps del proyecto.
 
 ### Flujo de trabajo
 
@@ -82,6 +82,9 @@ Carpeta:
 
 ml_pipeline/
 
+Esta estación implementa el pipeline de entrenamiento del modelo de Machine Learning, encargado de transformar los datos, entrenar el modelo y almacenar el artefacto resultante en un sistema de almacenamiento desacoplado.
+
+El pipeline se ejecuta dentro de un contenedor Docker (ml_pipeline) y forma parte del flujo MLOps del proyecto.
 
 Archivos principales:
 
@@ -92,32 +95,39 @@ model_utils.py
 Dockerfile
 
 
-### Procesamiento de datos
+
+### Fuente de datos
+
+El pipeline consume datos desde la base de datos PostgreSQL:
+
+Tabla: forest_ready 
+Estructura esperada:
+features → JSON con variables del modelo
+label → variable objetivo (cover_type)
+
+### Preprocesamiento
 
 El pipeline realiza:
 
-- limpieza de datos
-- conversión de variables numéricas
-- codificación de variables categóricas
+Conversión de variables a formato numérico
+Eliminación de valores nulos
+Codificación de variables categóricas mediante One-Hot Encoding
 
 Variables categóricas:
-
-
-Wilderness_Area
-Soil_Type
-
+wilderness_area
+soil_type
 
 ### Entrenamiento del modelo
 
-Se entrena un modelo:
+Se entrena un modelo de Machine Learning:
 
+Algoritmo: RandomForestClassifier
 
-RandomForestClassifier
-
+Parámetros:
+n_estimators=200
+random_state=42
 
 División del dataset:
-
-
 80% entrenamiento
 20% prueba
 
@@ -129,21 +139,16 @@ Evaluación mediante:
 - Recall
 - F1-score
 
-### Almacenamiento del modelo
+### Almacenamiento en MinIO
 
-El modelo entrenado se guarda como:
+El modelo se sube a MinIO (Object Storage):
+Bucket: models
+Objeto: forest_model.joblib
 
-
-forest_model.joblib
-
-
-y se almacena en **MinIO** dentro del bucket:
-
-
-models
-
-
-Esto permite mantener los modelos como **artefactos independientes del entorno de entrenamiento**.
+Esto permite:
+Separar entrenamiento de inferencia
+Versionar modelos fácilmente
+Desacoplar infraestructura
 
 ---
 
