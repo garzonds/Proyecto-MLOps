@@ -1,59 +1,91 @@
+### Proyecto MLOps — Pipeline Completo de Machine Learning
+## Descripción
 
-# Proyecto MLOps — Pipeline Completo de Machine Learning
+Este proyecto implementa una arquitectura de Machine Learning en producción, basada en microservicios, que cubre todo el ciclo de vida del modelo:
 
-Este proyecto implementa un **flujo completo de MLOps** dividido en tres microservicios independientes que trabajan juntos dentro de un entorno orquestado con **Docker Compose**.
+Ingesta de datos
+Procesamiento
+Entrenamiento
+Despliegue
+Inferencia
 
-El objetivo es simular un flujo real de producción donde:
+La solución está completamente contenerizada usando Docker Compose, integrando herramientas clave del ecosistema MLOps.
 
-- Los datos se **extraen desde una API externa**
-- Se **procesan y entrenan modelos de Machine Learning**
-- El modelo entrenado se **expone mediante una API de inferencia**
+## Contexto del problema
 
-Arquitectura general del sistema:
+El objetivo del modelo es predecir el tipo de cobertura forestal a partir de variables cartográficas como:
+
+Elevación
+Pendiente
+Distancias geográficas
+Variables categóricas del terreno
+Debido a la indisponibilidad de la API original, se implementó una API simulada, garantizando la continuidad del flujo de datos en batches dinámicos.
+
+## Arquitectura del sistema
 
 ![Arquitectura General](images/architecture.png)
 
+
 El sistema se divide en **tres estaciones principales**.
 
+
+| Servicio           | Descripción                                     |
+| ------------------ | ----------------------------------------------- |
+| **Airflow**        | Orquestación del pipeline                       |
+| **PostgreSQL**     | Almacenamiento de datos (raw, processed, ready) |
+| **MinIO**          | Almacenamiento de modelos                       |
+| **Data API**       | Simulación de fuente de datos                   |
+| **ML Pipeline**    | Entrenamiento del modelo                        |
+| **FastAPI**        | API de inferencia                               |
+| **Docker Compose** | Orquestación de contenedores                    |
+
+
 ---
+
+### Flujo de trabajo
+1. Llamada a la API
+2. Airflow ejecuta un DAG programado. y este realiza la peticion a la API externa (nos toco modelarla en local)
+3. Los datos obtenidos se almacenan en PostgreSQL.
+4. La base de datos actúa como almacenamiento inicial de datos crudos.
+5. ML pipeline
+6. MiniO
+7. FastAPI
+8. Usuario
+
+--- 
 
 # Estación 1 — Ingesta y Orquestación de Datos
 
 ![Estación 1](images/station1_ingestion.png)
 
-Esta estación se encarga de la **extracción programada de datos desde una API externa y su almacenamiento en una base de datos relacional**.
+El sistema está compuesto por los siguientes servicios:
 
-El proceso es orquestado mediante **Apache Airflow**, permitiendo automatizar la ejecución del pipeline.
+Responsable de la extracción automatizada de datos desde la API y su almacenamiento en PostgreSQL.
 
-### Flujo de trabajo
+## Flujo
 
-1. Airflow ejecuta un DAG programado.
-2. El DAG realiza una petición a la API externa.
-3. Los datos obtenidos se almacenan en PostgreSQL.
-4. La base de datos actúa como almacenamiento inicial de datos crudos.
+-Airflow ejecuta un DAG programado
+-Se realiza una única petición a la API por ejecución
+-Se almacenan los datos en forest_raw
+-Se acumulan batches de datos
+
+## Tecnologías
+
+-Apache Airflow
+-PostgreSQL
+-Docker
 
 ### Componentes principales
 
 Carpeta:
 
-
 airflow/
 
-
 Archivos principales:
-
-
 dags/data_pipeline_dag.py
 scripts/fetch_api_data.py
 Dockerfile
-
-
-### Tecnologías utilizadas
-
-- Apache Airflow
-- Docker
-- PostgreSQL
-- API externa
+API externa
 
 La API utilizada rota los datos cada **5 minutos**, por lo que cada ejecución del DAG solicita un **batch específico de datos**.
 
@@ -61,65 +93,27 @@ La API utilizada rota los datos cada **5 minutos**, por lo que cada ejecución d
 
 # Estación 2 — Pipeline de Machine Learning
 
+Esta estación implementa el pipeline de entrenamiento del modelo de Machine Learning, encargado de transformar los datos, entrenar el modelo y almacenar el artefacto resultante en un sistema de almacenamiento desacoplado.
+
+El pipeline se ejecuta dentro de un contenedor Docker (ml_pipeline) y forma parte del flujo MLOps del proyecto.
+
+## Arquitectura del Sistema
+
+El sistema está compuesto por los siguientes servicios:
+
 ![Estación 2](images/station2_ml_pipeline.png)
 
-Esta estación implementa el pipeline de entrenamiento del modelo de Machine Learning, encargado de transformar los datos, entrenar el modelo y almacenar el artefacto resultante en un sistema de almacenamiento desacoplado.
+## Flujo del Pipeline
 
-El pipeline se ejecuta dentro de un contenedor Docker (ml_pipeline) y forma parte del flujo MLOps del proyecto.
+El pipeline es completamente automatizado:
 
-### Flujo de trabajo
+- Lectura de datos desde  PostgreSQL
+- Procesamiento de datos   
+- Entrenamiento del modelo  
+- Evaluación del modelo  
+- Almacenamiento del modelo en MinIO  
 
-1. El pipeline lee los datos desde PostgreSQL.
-2. Se realiza el preprocesamiento de los datos.
-3. Se entrena el modelo de Machine Learning.
-4. El modelo entrenado se serializa.
-5. El modelo se almacena en **MinIO (Object Storage)**.
-
-### Componentes principales
-
-Carpeta:
-
-
-ml_pipeline/
-
-Esta estación implementa el pipeline de entrenamiento del modelo de Machine Learning, encargado de transformar los datos, entrenar el modelo y almacenar el artefacto resultante en un sistema de almacenamiento desacoplado.
-
-El pipeline se ejecuta dentro de un contenedor Docker (ml_pipeline) y forma parte del flujo MLOps del proyecto.
-
-Archivos principales:
-
-
-preprocess.py
-train_model.py
-model_utils.py
-Dockerfile
-
-
-
-### Fuente de datos
-
-El pipeline consume datos desde la base de datos PostgreSQL:
-
-Tabla: forest_ready 
-Estructura esperada:
-features → JSON con variables del modelo
-label → variable objetivo (cover_type)
-
-### Preprocesamiento
-
-El pipeline realiza:
-
-Conversión de variables a formato numérico
-Eliminación de valores nulos
-Codificación de variables categóricas mediante One-Hot Encoding
-
-Variables categóricas:
-wilderness_area
-soil_type
-
-### Entrenamiento del modelo
-
-Se entrena un modelo de Machine Learning:
+## Modelo
 
 Algoritmo: RandomForestClassifier
 
@@ -127,28 +121,23 @@ Parámetros:
 n_estimators=200
 random_state=42
 
-División del dataset:
-80% entrenamiento
-20% prueba
+## Evaluación
 
+Accuracy
+Precision
+Recall
+F1-score
 
-Evaluación mediante:
+## Almacenamiento
 
-- Accuracy
-- Precision
-- Recall
-- F1-score
+Archivo: forest_model.joblib
+Bucket: models (MinIO)
 
-### Almacenamiento en MinIO
+## Decisiones de diseño
 
-El modelo se sube a MinIO (Object Storage):
-Bucket: models
-Objeto: forest_model.joblib
-
-Esto permite:
-Separar entrenamiento de inferencia
-Versionar modelos fácilmente
-Desacoplar infraestructura
+Separación entre datos (PostgreSQL) y modelos (MinIO)
+Pipeline desacoplado del sistema de inferencia
+Reproducibilidad mediante Docker
 
 ---
 
@@ -171,12 +160,9 @@ El modelo se carga desde MinIO y se expone a través de una **API REST implement
 
 Carpeta:
 
-
 inference_api/
 
-
 Archivos principales:
-
 
 main.py
 model_loader.py
@@ -186,13 +172,9 @@ Dockerfile
 ### API REST
 
 Endpoint principal:
-
-
 POST /predict
 
-
 Entrada esperada:
-
 Variables cartográficas como:
 
 - Elevation
@@ -202,8 +184,6 @@ Variables cartográficas como:
 - Distancias geográficas
 
 Salida:
-
-
 Predicción de Cover Type (clase 1 a 7)
 
 
@@ -215,15 +195,6 @@ Todos los servicios se ejecutan dentro de un entorno unificado utilizando:
 
 
 docker-compose.yml
-
-
-Servicios incluidos:
-
-- Airflow
-- PostgreSQL
-- ML Pipeline
-- MinIO
-- API de inferencia
 
 Esto permite simular una arquitectura completa de **Machine Learning en producción**.
 
@@ -250,8 +221,12 @@ API externa - Airflow (ingesta) - PostgreSQL - ML Pipeline (entrenamiento) - Min
 
 ---
 
+## Conclusión
+
+Se construyó un sistema completo de MLOps que automatiza el flujo desde datos hasta predicciones en producción.
+La solución es reproducible, escalable y alineada con prácticas reales de la industria.
+
 # Autores
 
 Proyecto desarrollado para la asignatura **MLOps**.
-
 Arquitectura basada en microservicios para el ciclo completo de Machine Learning.
