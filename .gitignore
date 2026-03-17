@@ -1,16 +1,3 @@
-# MinIO
-minio_data/
 
-# Datos grandes
-data/covertype.csv
-
-# Python
 __pycache__/
 *.pyc
-
-# modelos
-*.joblib
-*.pkl
-
-# Docker volumes
-postgres_data/

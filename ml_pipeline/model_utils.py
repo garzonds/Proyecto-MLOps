@@ -9,10 +9,9 @@ def get_minio_client():
     Crea el cliente de conexión a MinIO usando variables de entorno
     compatibles con Docker Compose.
     """
-
     minio_endpoint = os.getenv("MINIO_ENDPOINT", "minio:9000")
-    minio_access_key = os.getenv("MINIO_ROOT_USER", "minioadmin")
-    minio_secret_key = os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")
+    minio_access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")   # corregido
+    minio_secret_key = os.getenv("MINIO_SECRET_KEY", "minioadmin")   # corregido
 
     client = Minio(
         minio_endpoint,
@@ -38,11 +37,9 @@ def upload_model_to_minio(model_path, bucket_name="models", object_name="forest_
     Sube el modelo entrenado a MinIO.
     Si el bucket no existe, lo crea automáticamente.
     """
-
     client = get_minio_client()
 
     try:
-        # verificar si el bucket existe
         if not client.bucket_exists(bucket_name):
             print(f"Bucket '{bucket_name}' no existe. Creándolo...")
             client.make_bucket(bucket_name)
@@ -50,7 +47,6 @@ def upload_model_to_minio(model_path, bucket_name="models", object_name="forest_
         else:
             print(f"Bucket '{bucket_name}' ya existe.")
 
-        # subir el modelo
         print(f"Subiendo modelo a MinIO: {object_name}")
         client.fput_object(
             bucket_name,

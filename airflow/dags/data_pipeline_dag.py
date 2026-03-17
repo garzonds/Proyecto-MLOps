@@ -8,7 +8,7 @@ Según el enunciado:
 - Se programa cada 5 minutos para capturar todos los batches.
 
 Flujo:
-  start → check_api → fetch_and_store → verify_data → end
+  start → fetch_and_store → verify_data → end
 """
 
 import os
@@ -16,7 +16,6 @@ import sys
 import logging
 from datetime import datetime, timedelta
 
-import requests
 from sqlalchemy import create_engine, text
 
 from airflow import DAG
@@ -33,42 +32,26 @@ POSTGRES_CONN = os.environ.get("POSTGRES_DATA_CONN", "postgresql+psycopg2://mlop
 
 
 # =============================================================================
-# TASK 1 — Verificar que la API esté disponible
-# =============================================================================
-def check_api(**context):
-    """Verifica que la API externa esté respondiendo antes de continuar."""
-    url = f"{DATA_API_URL}/status"
-    logger.info(f"Verificando API en: {url}")
-
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()
-
-    status = response.json()
-    logger.info(f"API disponible. Batch actual: {status.get('current_batch')} "
-                f"| Próximo batch en: {status.get('seconds_until_next_batch')}s")
-
-    # Pasar info al siguiente task via XCom
-    context["ti"].xcom_push(key="batch_id",            value=status.get("current_batch"))
-    context["ti"].xcom_push(key="seconds_until_next",  value=status.get("seconds_until_next_batch"))
-
-
-# =============================================================================
-# TASK 2 — Fetch y almacenamiento (UNA sola petición por ejecución)
+# TASK 1 — Fetch y almacenamiento (UNA sola petición por ejecución)
 # =============================================================================
 def fetch_and_store(**context):
     """
     Realiza UNA petición a la API y guarda todos los registros en forest_raw.
     Una ejecución del DAG = una petición = un batch completo almacenado.
+    Si la API retorna 400 (límite de batches alcanzado), termina sin error.
     """
-    # Importar el script de ingesta
     sys.path.insert(0, "/opt/airflow/scripts")
     from fetch_api_data import fetch_and_store as _fetch
 
-    _fetch()
+    batch_id = _fetch()
+
+    # Pasar batch_id al siguiente task via XCom
+    if batch_id is not None:
+        context["ti"].xcom_push(key="batch_id", value=batch_id)
 
 
 # =============================================================================
-# TASK 3 — Verificar que los datos se guardaron correctamente
+# TASK 2 — Verificar que los datos se guardaron correctamente
 # =============================================================================
 def verify_data(**context):
     """Cuenta los registros en forest_raw y loggea el total acumulado."""
@@ -79,7 +62,7 @@ def verify_data(**context):
             text("SELECT COUNT(*) FROM forest_raw")
         ).scalar()
 
-        batch_id = context["ti"].xcom_pull(key="batch_id", task_ids="check_api")
+        batch_id = context["ti"].xcom_pull(key="batch_id", task_ids="fetch_and_store")
 
         if batch_id:
             batch_count = conn.execute(
@@ -104,7 +87,7 @@ default_args = {
     "depends_on_past":  False,
     "email_on_failure": False,
     "email_on_retry":   False,
-    "retries":          2,
+    "retries":          1,
     "retry_delay":      timedelta(minutes=1),
 }
 
@@ -113,17 +96,12 @@ with DAG(
     description="Ingesta de datos desde API externa hacia PostgreSQL - Grupo 10",
     default_args=default_args,
     start_date=datetime(2024, 1, 1),
-    schedule_interval="*/5 * * * *",  # Cada 5 minutos — sincronizado con rotación de batches
+    schedule_interval="*/1 * * * *",  # Cada 5 minutos — sincronizado con rotación de batches
     catchup=False,
     tags=["mlops", "ingesta", "grupo10"],
 ) as dag:
 
     start = EmptyOperator(task_id="start")
-
-    t_check = PythonOperator(
-        task_id="check_api",
-        python_callable=check_api,
-    )
 
     t_fetch = PythonOperator(
         task_id="fetch_and_store",
@@ -137,4 +115,4 @@ with DAG(
 
     end = EmptyOperator(task_id="end")
 
-    start >> t_check >> t_fetch >> t_verify >> end
+    start >> t_fetch >> t_verify >> end
