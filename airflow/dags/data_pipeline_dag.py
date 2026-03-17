@@ -96,7 +96,7 @@ with DAG(
     description="Ingesta de datos desde API externa hacia PostgreSQL - Grupo 10",
     default_args=default_args,
     start_date=datetime(2024, 1, 1),
-    schedule_interval="*/1 * * * *",  # Cada 5 minutos — sincronizado con rotación de batches
+    schedule_interval="*/5 * * * *",  # Cada 5 minutos — sincronizado con rotación de batches
     catchup=False,
     tags=["mlops", "ingesta", "grupo10"],
 ) as dag:
