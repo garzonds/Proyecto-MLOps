@@ -152,6 +152,17 @@ Reiniciar el conteo de batches
 curl "http://localhost:8081/restart_data_generation?group_number=10"
 
 ## Activar el DAG
+
+## Evidencia de ejecución del DAG
+
+![Airflow DAG](images/airflow_dag.png)
+
+El DAG se ejecuta correctamente siguiendo el flujo:
+start → fetch_and_store → verify_data → end
+
+Se observa que los datos son ingeridos desde la API y almacenados en PostgreSQL.
+
+
 - Abrir http://localhost:8080 (usuario: admin, contrasena: admin)
 - Activar el toggle del DAG data_pipeline_dag
 - Disparar manualmente con el boton Trigger DAG
@@ -180,6 +191,19 @@ Resultado
 Esta estación implementa el pipeline de entrenamiento del modelo de Machine Learning, encargado de transformar los datos, entrenar el modelo y almacenar el artefacto resultante en un sistema de almacenamiento desacoplado.
 
 El pipeline se ejecuta dentro de un contenedor Docker (ml_pipeline) y forma parte del flujo MLOps del proyecto.
+
+## Evidencia de entrenamiento
+
+![Logs de entrenamiento](images/log_entrenamiento.png)
+
+En los logs se evidencia que:
+
+- Los datos son cargados desde PostgreSQL (forest_raw)
+- Se realiza el entrenamiento del modelo
+- Se obtiene una métrica de desempeño (accuracy)
+- El modelo es almacenado correctamente en MinIO
+
+Esto confirma que el entrenamiento NO utiliza archivos locales, sino datos provenientes de la base de datos.
 
 ## Arquitectura del Sistema
 
@@ -216,6 +240,17 @@ F1-score
 
 Archivo: forest_model.joblib
 Bucket: models (MinIO)
+
+## Evidencia en MinIO
+
+![Modelo en MinIO](images/minio_model.png)
+
+El modelo entrenado se almacena como un artefacto en MinIO:
+
+- Bucket: models
+- Archivo: forest_model.joblib
+
+Esto demuestra la separación entre entrenamiento y almacenamiento de modelos.
 
 ## Decisiones de diseño
 
@@ -270,6 +305,19 @@ Variables cartográficas como:
 Salida:
 Predicción de Cover Type (clase 1 a 7)
 
+## Evidencia de inferencia
+
+![Predicción API](images/api_predict.png)
+
+La API carga dinámicamente el modelo desde MinIO y responde correctamente a solicitudes de predicción.
+
+Ejemplo de respuesta:
+
+{
+  "prediction": 5
+}
+
+Esto valida el funcionamiento end-to-end del sistema.
 
 ---
 

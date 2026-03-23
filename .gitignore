@@ -1,3 +1,5 @@
-
 __pycache__/
 *.pyc
+minio_data/
+data_api/data/timestamps.json
+model.joblib

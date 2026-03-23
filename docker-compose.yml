@@ -16,19 +16,25 @@ x-airflow-common:
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     AIRFLOW__WEBSERVER__SECRET_KEY: 'mlops_grupo10_secret_key_2026'
+
     # Conexión a PostgreSQL de datos
     POSTGRES_DATA_CONN: postgresql+psycopg2://mlops:mlops@postgres_data:5432/mlops_db
+
     # Conexión a MinIO
     MINIO_ENDPOINT: minio:9000
     MINIO_ACCESS_KEY: minioadmin
     MINIO_SECRET_KEY: minioadmin
     MINIO_BUCKET: models
+
     # API externa de datos — conexión via host como red externa
     DATA_API_URL: http://host.docker.internal:8081
     GROUP_ID: "10"
+
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/scripts:/opt/airflow/scripts
+    - ./ml_pipeline:/opt/airflow/ml_pipeline
+
   depends_on:
     &airflow-common-depends-on
     postgres_airflow:
@@ -49,7 +55,7 @@ services:
     volumes:
       - postgres_airflow_volume:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "airflow"]
+      test: ["CMD", "pg_isready", "-U", "airflow", "-d", "airflow_db"]
       interval: 10s
       retries: 5
       start_period: 5s
@@ -71,7 +77,7 @@ services:
       - postgres_data_volume:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "mlops"]
+      test: ["CMD", "pg_isready", "-U", "mlops", "-d", "mlops_db"]
       interval: 10s
       retries: 5
       start_period: 5s
@@ -94,8 +100,8 @@ services:
     volumes:
       - minio_volume:/data
     ports:
-      - "9000:9000"   # API
-      - "9001:9001"   # UI
+      - "9000:9000"
+      - "9001:9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
@@ -115,7 +121,7 @@ services:
     command:
       - -c
       - |
-        airflow db migrate &&
+        airflow db init && \
         airflow users create \
           --username admin \
           --password admin \

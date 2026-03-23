@@ -1,8 +1,19 @@
-FROM apache/airflow:2.6.3-python3.10
+FROM apache/airflow:2.6.3
+
+USER root
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+USER airflow
 
 RUN pip install --no-cache-dir \
     pandas \
-    psycopg2-binary \
+    scikit-learn \
+    numpy \
     sqlalchemy \
-    requests \
-    minio
+    psycopg2-binary \
+    minio \
+    joblib
